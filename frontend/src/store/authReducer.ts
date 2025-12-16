@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { customAxios, setAccessTokenInAxiosHeaders } from "../utils/customAxios.ts";
+import { customAxios, setAccessTokenInAxiosHeaders, removeAccessTokenFromAxiosHeaders } from "../utils/customAxios.ts";
 import type { User } from "../types/User";
 
 export interface AuthStateProps {
@@ -11,17 +11,26 @@ const initialState: AuthStateProps = {
   isLogin: false
 }
 
+export const login = createAsyncThunk<{token: string, user: User}, { email: string; password: string }>(
+  "auth/login",
+  async (payload) => {
+    return customAxios.post(`/api/user/login`, payload).then((data) => {
+      return data.data
+    })
+  }
+)
+
 const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    login: (state) => {
-      state.isLogin = true
-    },
     logout: (state) => {
+      removeAccessTokenFromAxiosHeaders()
       state.isLogin = false
+      state.user = undefined
     }
-  }, extraReducers: (builder) => {
+  }, 
+  extraReducers: (builder) => {
     builder
       .addCase(login.fulfilled, (state, action) => {
         setAccessTokenInAxiosHeaders(action.payload.token)
@@ -40,15 +49,6 @@ const authSlice = createSlice({
     }
   }
 })
-
-export const login = createAsyncThunk<string, { email: string; password: string }>(
-  "auth/login",
-  async (payload) => {
-    return customAxios.post(`/api/user/login`, payload).then((data) => {
-      return data.data
-    })
-  }
-)
 
 export default authSlice.reducer
 export const authSelector = authSlice.selectors
