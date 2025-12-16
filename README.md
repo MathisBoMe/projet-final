@@ -11,3 +11,7 @@
 ## Secondaire
     1 - Améliorer configuration CORS
     2 - Améliorer la gestion des JWT et l'expiration
+
+Clé ssl : burnedtape
+
+openssl req -x509 -newkey ed25519 -days 3650 -noenc -keyout example.com.key -out example.com.crt -subj "/CN=example.com" -addext "subjectAltName=DNS:example.com,DNS:*.example.com,IP:10.0.0.1"
