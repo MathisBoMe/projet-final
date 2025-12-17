@@ -10,10 +10,10 @@ import { Film } from "./pages/film/Film.tsx"
 
 export const router = createBrowserRouter([
   {
-    path: 'auth/login',
+    path: '/auth/login',
     element: <Login/>
   }, {
-    path: 'auth/register',
+    path: '/auth/register',
     element: <Signup/>
   }, {
     element: <MainLayout/>,
@@ -22,16 +22,16 @@ export const router = createBrowserRouter([
         index: true,
         element: <Home/>,
       }, {
-      path: 'admin',
+        path: '/admin',
         element: <Admin/>,
       }, {
-      path: 'admin/film',
+        path: '/admin/film',
         element: <CreateFilm/>
       }, {
-      path: 'admin/realisateur',
+        path: '/admin/realisateur',
         element: <Realisateur/>
       }, {
-      path: 'film/:id',
+        path: '/film/:id',
         element: <Film/>
       }
     ]

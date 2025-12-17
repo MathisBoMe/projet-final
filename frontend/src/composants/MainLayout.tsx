@@ -4,20 +4,20 @@ import { NavBar } from "./NavBar.tsx";
 import styled from "styled-components";
 
 const Main = styled.main`
-    padding: 1em;
-    gap: 1em;
+    padding: 2rem;
+    gap: 2rem;
     display: flex;
     flex-direction: column;
-    max-width: 1000px;
+    max-width: 1400px;
     margin: 0 auto;
+    min-height: calc(100vh - 70px);
 `
 
 export function MainLayout() {
-
-  const isLogin = useAppSelector(state => state.auth.isLogin)
+  const isLogin = useAppSelector(state => state.auth.isLogin);
 
   if (!isLogin) {
-    return <Navigate to={'/auth/login'} replace/>
+    return <Navigate to={'/auth/login'} replace/>;
   }
 
   return (
@@ -27,5 +27,5 @@ export function MainLayout() {
         <Outlet/>
       </Main>
     </>
-  )
+  );
 }
