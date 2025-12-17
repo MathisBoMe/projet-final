@@ -5,7 +5,7 @@ const User = require("../models/User.js");
 
 // Fonctions utilitaires de validation et sanitisation
 function isValidEmail(email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]{1,40}@[^\s@]{1,40}\.[^\s@]{1,40}$/;
     return emailRegex.test(email);
 }
 
@@ -83,13 +83,13 @@ async function registerUser(req, res) {
         }
         
         const hashedPassword = await bcrypt.hash(password, 10);
+        
         const newUser = await User.create({ 
             username: sanitizedUsername, 
             email: sanitizedEmail, 
             password: hashedPassword 
         });
 
-        // Ne pas renvoyer le mot de passe
         const userResponse = {
             id: newUser._id,
             username: newUser.username,
@@ -147,7 +147,7 @@ async function loginUser(req, res) {
 
         const token = jwt.sign(
             { userId: user._id, role: user.role },
-            process.env.JWT_SECRET || "devsecret",
+            process.env.JWT_SECRET,
             { expiresIn: "2h" }
         );
 
