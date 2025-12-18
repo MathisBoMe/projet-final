@@ -4,7 +4,7 @@
  * mais cette protection ajoute une couche supplémentaire de sécurité
  */
 
-const crypto = require("crypto");
+const crypto = require("node:crypto");
 
 // Store pour les tokens CSRF (en production, utiliser Redis ou une base de données)
 const csrfTokens = new Map();

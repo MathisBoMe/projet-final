@@ -1,34 +1,11 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const securityLogger = require("../middlewares/securityLogger.js");
-
-// Fonctions utilitaires de validation et sanitisation
-function sanitizeString(str) {
-    if (typeof str !== "string") return null;
-    return str.trim().slice(0, 255);
-}
-
-function isValidInteger(id) {
-    if (typeof id === "number") {
-        return Number.isInteger(id) && id > 0 && id <= Number.MAX_SAFE_INTEGER;
-    }
-    if (typeof id === "string") {
-        const num = Number(id);
-        return !isNaN(num) && Number.isInteger(num) && num > 0 && num <= Number.MAX_SAFE_INTEGER;
-    }
-    return false;
-}
-
-function isValidAge(age) {
-    if (typeof age === "number") {
-        return Number.isInteger(age) && age >= 0 && age <= 150;
-    }
-    if (typeof age === "string") {
-        const num = Number(age);
-        return !isNaN(num) && Number.isInteger(num) && num >= 0 && num <= 150;
-    }
-    return false;
-}
+const {
+    sanitizeString,
+    isValidInteger,
+    isValidAge
+} = require("../utils/validation.js");
 
 async function createActeur(req, res) {
     try {

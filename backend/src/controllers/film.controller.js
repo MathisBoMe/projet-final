@@ -1,36 +1,10 @@
-const { PrismaClient } = require("@prisma/client")
+const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-
-// Fonctions utilitaires de validation et sanitisation
-function sanitizeString(str) {
-    if (typeof str !== "string") return null;
-    // Retirer les caractères dangereux et limiter la longueur
-    return str.trim().slice(0, 255);
-}
-
-function isValidDate(dateStr) {
-    if (typeof dateStr !== "string") return false;
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return false;
-    
-    // Validation de plage de dates raisonnable (1888 = premier film, jusqu'à 10 ans dans le futur)
-    const minYear = 1888;
-    const maxYear = new Date().getFullYear() + 10;
-    const year = date.getFullYear();
-    
-    return year >= minYear && year <= maxYear;
-}
-
-function isValidInteger(id) {
-    if (typeof id === "number") {
-        return Number.isInteger(id) && id > 0 && id <= Number.MAX_SAFE_INTEGER;
-    }
-    if (typeof id === "string") {
-        const num = Number(id);
-        return !isNaN(num) && Number.isInteger(num) && num > 0 && num <= Number.MAX_SAFE_INTEGER;
-    }
-    return false;
-}
+const {
+    sanitizeString,
+    isValidDate,
+    isValidInteger
+} = require("../utils/validation.js");
 
 async function createFilm(req, res) {
     try {
