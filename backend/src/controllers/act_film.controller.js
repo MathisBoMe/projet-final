@@ -7,7 +7,7 @@ async function createActFilm(req, res) {
     }
     const { filmNom, acteurNom } = req.body;
 
-    if (typeof filmNom != "string" || typeof filmNom != "string") return res.status(400).json({ error: "Les données entrées doivent être valide." });
+    if (typeof filmNom != "string" || typeof acteurNom != "string") return res.status(400).json({ error: "Les données entrées doivent être valide." });
 
     const film = await prisma.film.findUnique({ where: { name: filmNom } });
     if (!film) return res.status(400).json({ error: "Ce film n'existe pas dans la base de données." });
@@ -45,7 +45,7 @@ async function updateActFilm(req, res) {
     }
     const { id } = req.params;
     const { filmNom, acteurNom } = req.body;
-    if (typeof filmNom != "string" || typeof filmNom != "string") return res.status(400).json({ error: "Les données entrées doivent être valide." });
+    if (typeof filmNom != "string" || typeof acteurNom != "string") return res.status(400).json({ error: "Les données entrées doivent être valide." });
 
     const film = await prisma.film.findUnique({ where: { name: filmNom } });
     if (!film) return res.status(400).json({ error: "Ce film n'existe pas dans la base de données." });
