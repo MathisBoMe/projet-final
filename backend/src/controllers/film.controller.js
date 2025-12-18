@@ -1,87 +1,275 @@
 const { PrismaClient } = require("@prisma/client")
 const prisma = new PrismaClient();
 
-async function createFilm(req, res) {
-    if (!req.user) {
-        return res.status(401).json({ error: "Token manquant ou invalide." });
+// Fonctions utilitaires de validation et sanitisation
+function sanitizeString(str) {
+    if (typeof str !== "string") return null;
+    // Retirer les caractères dangereux et limiter la longueur
+    return str.trim().slice(0, 255);
+}
+
+function isValidDate(dateStr) {
+    if (typeof dateStr !== "string") return false;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return false;
+    
+    // Validation de plage de dates raisonnable (1888 = premier film, jusqu'à 10 ans dans le futur)
+    const minYear = 1888;
+    const maxYear = new Date().getFullYear() + 10;
+    const year = date.getFullYear();
+    
+    return year >= minYear && year <= maxYear;
+}
+
+function isValidInteger(id) {
+    if (typeof id === "number") {
+        return Number.isInteger(id) && id > 0 && id <= Number.MAX_SAFE_INTEGER;
     }
-    const { name, release_date, réalisateurName } = req.body;
+    if (typeof id === "string") {
+        const num = Number(id);
+        return !isNaN(num) && Number.isInteger(num) && num > 0 && num <= Number.MAX_SAFE_INTEGER;
+    }
+    return false;
+}
 
-    if (typeof name != "string" || !isValidDate(release_date) || typeof réalisateurName != "string") return res.status(400).json({ error: "Les données entrées doivent être valide." });
-
-    const réalisateur = await prisma.réalisateur.findUnique({ where: { name: réalisateurName } });
-    if (!réalisateur) return res.status(400).json({ error: "Ce réalisateur n'existe pas dans la base de données." });
-    const realId = réalisateur.id;
-
-    const film = await prisma.film.create({ data: { name, release_date, realId } });
-    res.status(201).json(film);
+async function createFilm(req, res) {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ error: "Token manquant ou invalide." });
+        }
+        
+        const { name, release_date, réalisateurName } = req.body || {};
+        
+        // Validation de la présence des champs
+        if (!name || !release_date || !réalisateurName) {
+            return res.status(400).json({ error: "Tous les champs sont requis (name, release_date, réalisateurName)" });
+        }
+        
+        // Validation des types
+        if (typeof name !== "string" || typeof release_date !== "string" || typeof réalisateurName !== "string") {
+            return res.status(400).json({ error: "Les données entrées doivent être des chaînes de caractères valides." });
+        }
+        
+        // Sanitisation
+        const sanitizedName = sanitizeString(name);
+        const sanitizedRealisateurName = sanitizeString(réalisateurName);
+        
+        if (!sanitizedName || sanitizedName.length < 1 || sanitizedName.length > 255) {
+            return res.status(400).json({ error: "Le nom du film doit contenir entre 1 et 255 caractères." });
+        }
+        
+        if (!sanitizedRealisateurName || sanitizedRealisateurName.length < 1 || sanitizedRealisateurName.length > 255) {
+            return res.status(400).json({ error: "Le nom du réalisateur doit contenir entre 1 et 255 caractères." });
+        }
+        
+        // Validation de la date
+        if (!isValidDate(release_date)) {
+            return res.status(400).json({ error: "Date de sortie invalide. Format attendu: YYYY-MM-DD, année entre 1888 et " + (new Date().getFullYear() + 10) + "." });
+        }
+        
+        // Vérification de l'existence du réalisateur
+        const réalisateur = await prisma.réalisateur.findUnique({ where: { name: sanitizedRealisateurName } });
+        if (!réalisateur) {
+            return res.status(400).json({ error: "Ce réalisateur n'existe pas dans la base de données." });
+        }
+        
+        // Vérification de l'unicité du nom de film
+        const existingFilm = await prisma.film.findUnique({ where: { name: sanitizedName } });
+        if (existingFilm) {
+            return res.status(400).json({ error: "Un film avec ce nom existe déjà." });
+        }
+        
+        const film = await prisma.film.create({ 
+            data: { 
+                name: sanitizedName, 
+                release_date: release_date.trim(), 
+                realId: réalisateur.id 
+            } 
+        });
+        
+        res.status(201).json(film);
+    } catch (err) {
+        console.error("Erreur lors de la création du film:", err);
+        if (err.code === 'P2002') {
+            return res.status(400).json({ error: "Un film avec ce nom existe déjà." });
+        }
+        res.status(500).json({ error: "Erreur serveur lors de la création du film." });
+    }
 }
 
 async function listFilm(req, res) {
-    if (!req.user) {
-        return res.status(401).json({ error: "Token manquant ou invalide." });
-    }
-    const { nom } = req.query;
-    const films = await prisma.film.findMany({
-        where: {
-            name: {
-                contains: nom != null ? nom : undefined
+    try {
+        if (!req.user) {
+            return res.status(401).json({ error: "Token manquant ou invalide." });
+        }
+        
+        const { nom } = req.query;
+        
+        // Sanitisation du paramètre de recherche
+        let searchFilter = undefined;
+        if (nom !== undefined && nom !== null) {
+            if (typeof nom !== "string") {
+                return res.status(400).json({ error: "Le paramètre 'nom' doit être une chaîne de caractères." });
+            }
+            const sanitizedNom = sanitizeString(nom);
+            if (sanitizedNom && sanitizedNom.length > 0) {
+                searchFilter = { contains: sanitizedNom };
             }
         }
-    });
-    res.json(films);
+        
+        const films = await prisma.film.findMany({
+            where: searchFilter ? { name: searchFilter } : undefined,
+            take: 1000, // Limite pour éviter les réponses trop volumineuses
+        });
+        
+        res.json(films);
+    } catch (err) {
+        console.error("Erreur lors de la récupération des films:", err);
+        res.status(500).json({ error: "Erreur serveur lors de la récupération des films." });
+    }
 }
 
 async function getFilm(req, res) {
-    if (!req.user) {
-        return res.status(401).json({ error: "Token manquant ou invalide." });
+    try {
+        if (!req.user) {
+            return res.status(401).json({ error: "Token manquant ou invalide." });
+        }
+        
+        const { id } = req.params;
+        
+        // Validation de l'ID
+        if (!id || !isValidInteger(id)) {
+            return res.status(400).json({ error: "ID de film invalide." });
+        }
+        
+        const filmId = Number(id);
+        const film = await prisma.film.findUnique({ where: { id: filmId } });
+        
+        if (!film) {
+            return res.status(404).json({ error: "Film non trouvé" });
+        }
+        
+        res.json(film);
+    } catch (err) {
+        console.error("Erreur lors de la récupération du film:", err);
+        res.status(500).json({ error: "Erreur serveur lors de la récupération du film." });
     }
-    const { id } = req.params;
-    const film = await prisma.film.findUnique({ where: { id: Number(id) } });
-    if (!film) return res.status(404).json({ error: "Film non trouvé" });
-    res.json(film);
 }
 
 async function updateFilm(req, res) {
-    if (!req.user || req.user.role !== "admin") {
-        return res.status(403).json({ error: "Accès refusé. Rôle admin requis." });
-    }
-    const { id } = req.params;
-    const { name, release_date, réalisateurName } = req.body;
-
-    if (typeof name != "string" || !isValidDate(release_date) || typeof réalisateurName != "string") return res.status(400).json({ error: "Les données entrées doivent être valide." });
-
-    const réalisateur = await prisma.réalisateur.findUnique({ where: { name: réalisateurName } });
-    if (!réalisateur) return res.status(400).json({ error: "Ce réalisateur n'existe pas dans la base de données." });
-    const realId = réalisateur.id;
-
     try {
-        const film = await prisma.film.update({ where: { id: Number(id) }, data: { name, release_date, realId } });
+        if (!req.user || req.user.role !== "admin") {
+            return res.status(403).json({ error: "Accès refusé. Rôle admin requis." });
+        }
+        
+        const { id } = req.params;
+        
+        // Validation de l'ID
+        if (!id || !isValidInteger(id)) {
+            return res.status(400).json({ error: "ID de film invalide." });
+        }
+        
+        const { name, release_date, réalisateurName } = req.body || {};
+        
+        // Vérifier qu'au moins un champ est fourni
+        if (!name && !release_date && !réalisateurName) {
+            return res.status(400).json({ error: "Au moins un champ doit être fourni pour la mise à jour." });
+        }
+        
+        // Préparer l'objet de mise à jour
+        const updateData = {};
+        
+        if (name !== undefined) {
+            if (typeof name !== "string") {
+                return res.status(400).json({ error: "Le nom doit être une chaîne de caractères." });
+            }
+            const sanitizedName = sanitizeString(name);
+            if (!sanitizedName || sanitizedName.length < 1 || sanitizedName.length > 255) {
+                return res.status(400).json({ error: "Le nom du film doit contenir entre 1 et 255 caractères." });
+            }
+            updateData.name = sanitizedName;
+        }
+        
+        if (release_date !== undefined) {
+            if (typeof release_date !== "string") {
+                return res.status(400).json({ error: "La date de sortie doit être une chaîne de caractères." });
+            }
+            if (!isValidDate(release_date)) {
+                return res.status(400).json({ error: "Date de sortie invalide. Format attendu: YYYY-MM-DD, année entre 1888 et " + (new Date().getFullYear() + 10) + "." });
+            }
+            updateData.release_date = release_date.trim();
+        }
+        
+        if (réalisateurName !== undefined) {
+            if (typeof réalisateurName !== "string") {
+                return res.status(400).json({ error: "Le nom du réalisateur doit être une chaîne de caractères." });
+            }
+            const sanitizedRealisateurName = sanitizeString(réalisateurName);
+            if (!sanitizedRealisateurName || sanitizedRealisateurName.length < 1 || sanitizedRealisateurName.length > 255) {
+                return res.status(400).json({ error: "Le nom du réalisateur doit contenir entre 1 et 255 caractères." });
+            }
+            
+            const réalisateur = await prisma.réalisateur.findUnique({ where: { name: sanitizedRealisateurName } });
+            if (!réalisateur) {
+                return res.status(400).json({ error: "Ce réalisateur n'existe pas dans la base de données." });
+            }
+            updateData.realId = réalisateur.id;
+        }
+        
+        const filmId = Number(id);
+        const film = await prisma.film.update({ 
+            where: { id: filmId }, 
+            data: updateData 
+        });
+        
         res.json(film);
     } catch (err) {
-        res.status(404).json({ error: "Film non trouvé" });
+        console.error("Erreur lors de la mise à jour du film:", err);
+        if (err.code === 'P2025') {
+            return res.status(404).json({ error: "Film non trouvé" });
+        }
+        if (err.code === 'P2002') {
+            return res.status(400).json({ error: "Un film avec ce nom existe déjà." });
+        }
+        res.status(500).json({ error: "Erreur serveur lors de la mise à jour du film." });
     }
 }
 
 async function deleteFilm(req, res) {
-    if (!req.user || req.user.role !== "admin") {
-        return res.status(403).json({ error: "Accès refusé. Rôle admin requis." });
-    }
-    const { id } = req.params;
     try {
-        if (prisma.film_Acteur.findMany({ where: { filmId: Number(id) } })) {
-            await prisma.film_Acteur.deleteMany({ where: { filmId: Number(id) } });
+        if (!req.user || req.user.role !== "admin") {
+            return res.status(403).json({ error: "Accès refusé. Rôle admin requis." });
         }
-        await prisma.film.delete({ where: { id: Number(id) } });
+        
+        const { id } = req.params;
+        
+        // Validation de l'ID
+        if (!id || !isValidInteger(id)) {
+            return res.status(400).json({ error: "ID de film invalide." });
+        }
+        
+        const filmId = Number(id);
+        
+        // Vérifier si le film existe avant de supprimer les relations
+        const film = await prisma.film.findUnique({ where: { id: filmId } });
+        if (!film) {
+            return res.status(404).json({ error: "Film non trouvé" });
+        }
+        
+        // Supprimer les relations film-acteur d'abord
+        await prisma.film_Acteur.deleteMany({ where: { filmId: filmId } });
+        
+        // Supprimer le film
+        await prisma.film.delete({ where: { id: filmId } });
+        
         res.status(204).end();
-    } catch {
-        res.status(404).json({ error: "Film non trouvé" })
+    } catch (err) {
+        console.error("Erreur lors de la suppression du film:", err);
+        if (err.code === 'P2025') {
+            return res.status(404).json({ error: "Film non trouvé" });
+        }
+        res.status(500).json({ error: "Erreur serveur lors de la suppression du film." });
     }
 }
 
 module.exports = { createFilm, listFilm, getFilm, updateFilm, deleteFilm }
-
-function isValidDate(dateStr) {
-    const date = new Date(dateStr);
-    return !isNaN(date.getTime());
-}

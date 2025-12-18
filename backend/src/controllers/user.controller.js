@@ -1,7 +1,9 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 const User = require("../models/User.js");
+const securityLogger = require("../middlewares/securityLogger.js");
 
 // Fonctions utilitaires de validation et sanitisation
 function isValidEmail(email) {
@@ -87,7 +89,14 @@ async function registerUser(req, res) {
         const newUser = await User.create({ 
             username: sanitizedUsername, 
             email: sanitizedEmail, 
-            password: hashedPassword 
+            password: hashedPassword,
+            refreshTokens: []
+        });
+        
+        securityLogger.logSecurityError(req, null, { 
+            event: "USER_REGISTERED", 
+            userId: newUser._id,
+            email: sanitizedEmail 
         });
 
         const userResponse = {
@@ -141,18 +150,38 @@ async function loginUser(req, res) {
 
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
+            securityLogger.logLoginAttempt(req, false, "Mot de passe incorrect");
             // Réponse générique pour éviter l'énumération d'utilisateurs
             return res.status(400).json({ message: "Identifiants invalides" });
         }
 
-        const token = jwt.sign(
+        // Générer access token (15 minutes)
+        const accessToken = jwt.sign(
             { userId: user._id, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: "2h" }
+            { expiresIn: "15m" }
         );
 
+        // Générer refresh token (7 jours)
+        const refreshToken = crypto.randomBytes(64).toString('hex');
+        
+        // Stocker le refresh token dans la base de données
+        // Limiter à 5 refresh tokens actifs par utilisateur (rotation)
+        const userWithTokens = await User.findById(user._id).select('+refreshTokens');
+        const refreshTokens = userWithTokens.refreshTokens || [];
+        if (refreshTokens.length >= 5) {
+            // Supprimer le plus ancien (FIFO)
+            refreshTokens.shift();
+        }
+        refreshTokens.push(refreshToken);
+        
+        await User.findByIdAndUpdate(user._id, { refreshTokens });
+
+        securityLogger.logLoginAttempt(req, true);
+
         res.json({
-            token,
+            accessToken,
+            refreshToken,
             user: {
                 id: user._id,
                 username: user.username,
@@ -353,9 +382,80 @@ async function deleteUser(req, res) {
     }
 }
 
+async function refreshToken(req, res) {
+    try {
+        const { refreshToken } = req.body;
+        
+        if (!refreshToken || typeof refreshToken !== "string") {
+            return res.status(400).json({ message: "Refresh token requis" });
+        }
+        
+        // Trouver l'utilisateur avec ce refresh token
+        const user = await User.findOne({ refreshTokens: refreshToken }).select('+refreshTokens');
+        
+        if (!user) {
+            securityLogger.logSecurityError(req, new Error("Refresh token invalide"), { event: "INVALID_REFRESH_TOKEN" });
+            return res.status(401).json({ message: "Refresh token invalide" });
+        }
+        
+        // Générer un nouveau access token
+        const accessToken = jwt.sign(
+            { userId: user._id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: "15m" }
+        );
+        
+        // Rotation du refresh token (générer un nouveau et supprimer l'ancien)
+        const newRefreshToken = crypto.randomBytes(64).toString('hex');
+        const refreshTokens = user.refreshTokens.filter(token => token !== refreshToken);
+        refreshTokens.push(newRefreshToken);
+        
+        // Limiter à 5 refresh tokens
+        if (refreshTokens.length > 5) {
+            refreshTokens.shift();
+        }
+        
+        await User.findByIdAndUpdate(user._id, { refreshTokens });
+        
+        res.json({
+            accessToken,
+            refreshToken: newRefreshToken
+        });
+    } catch (err) {
+        console.error(err);
+        securityLogger.logSecurityError(req, err, { event: "REFRESH_TOKEN_ERROR" });
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+}
+
+async function logout(req, res) {
+    try {
+        const { refreshToken } = req.body;
+        
+        if (refreshToken && typeof refreshToken === "string") {
+            // Révoquer le refresh token spécifique
+            const user = await User.findOne({ refreshTokens: refreshToken }).select('+refreshTokens');
+            if (user) {
+                const refreshTokens = user.refreshTokens.filter(token => token !== refreshToken);
+                await User.findByIdAndUpdate(user._id, { refreshTokens });
+            }
+        } else if (req.user && req.user.userId) {
+            // Révoquer tous les refresh tokens de l'utilisateur
+            await User.findByIdAndUpdate(req.user.userId, { refreshTokens: [] });
+        }
+        
+        res.json({ message: "Déconnexion réussie" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+}
+
 module.exports = { 
     registerUser, 
-    loginUser, 
+    loginUser,
+    refreshToken,
+    logout,
     getUserByToken, 
     updateUserByToken, 
     deleteUserByToken,

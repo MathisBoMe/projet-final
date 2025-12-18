@@ -1,7 +1,9 @@
 const express = require("express");
 const { 
     registerUser, 
-    loginUser, 
+    loginUser,
+    refreshToken,
+    logout,
     getUserByToken, 
     updateUserByToken, 
     deleteUserByToken,
@@ -16,6 +18,8 @@ const router = express.Router();
 
 router.post("/register", registerUser);
 router.post("/login", loginUser);
+router.post("/refresh", refreshToken);
+router.post("/logout", verifyToken, logout);
 router.get("/me", verifyToken, requireRole("user"), getUserByToken);
 router.put("/me", verifyToken, requireRole("user"), updateUserByToken);
 router.delete("/me", verifyToken, requireRole("user"), deleteUserByToken);
