@@ -5,7 +5,7 @@ const app = require("../app.js");
 const User = require("../models/User.js");
 
 beforeAll(async () => {
-    const uri = process.env.MONGO_URI || "mongodb://localhost:27017/cinema_projet_api_test";
+    const uri = process.env.MONGO_URI;
     await mongoose.connect(uri);
 });
 
