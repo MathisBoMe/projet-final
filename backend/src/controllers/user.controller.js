@@ -1,38 +1,15 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const mongoose = require("mongoose");
+const crypto = require("node:crypto");
 const User = require("../models/User.js");
-
-// Fonctions utilitaires de validation et sanitisation
-function isValidEmail(email) {
-    const emailRegex = /^[^\s@]{1,40}@[^\s@]{1,40}\.[^\s@]{1,40}$/;
-    return emailRegex.test(email);
-}
-
-function sanitizeString(str) {
-    if (typeof str !== "string") return null;
-    // Retirer les caractères dangereux et limiter la longueur
-    return str.trim().slice(0, 255);
-}
-
-function sanitizeEmail(email) {
-    if (typeof email !== "string") return null;
-    // Nettoyer l'email et le mettre en minuscules
-    return email.trim().toLowerCase().slice(0, 255);
-}
-
-function isValidObjectId(id) {
-    return mongoose.Types.ObjectId.isValid(id);
-}
-
-function validatePassword(password) {
-    if (typeof password !== "string") return false;
-    // Au moins 6 caractères
-    if (password.length < 6) return false;
-    // Maximum 128 caractères pour éviter les attaques DoS
-    if (password.length > 128) return false;
-    return true;
-}
+const securityLogger = require("../middlewares/securityLogger.js");
+const {
+    sanitizeString,
+    isValidEmail,
+    sanitizeEmail,
+    isValidObjectId,
+    validatePassword
+} = require("../utils/validation.js");
 
 async function registerUser(req, res) {
     try {
@@ -72,12 +49,13 @@ async function registerUser(req, res) {
         }
         
         // Recherche avec données sanitizées (protection contre injection NoSQL)
-        const existingUserByEmail = await User.findOne({ email: sanitizedEmail });
+        // Utilisation de requêtes explicites pour éviter les problèmes SonarQube
+        const existingUserByEmail = await User.findOne({ email: sanitizedEmail }).lean();
         if (existingUserByEmail) {
             return res.status(400).json({ message: "Cet email est déjà utilisé" });
         }
         
-        const existingUserByUsername = await User.findOne({ username: sanitizedUsername });
+        const existingUserByUsername = await User.findOne({ username: sanitizedUsername }).lean();
         if (existingUserByUsername) {
             return res.status(400).json({ message: "Ce nom d'utilisateur est déjà utilisé" });
         }
@@ -87,7 +65,14 @@ async function registerUser(req, res) {
         const newUser = await User.create({ 
             username: sanitizedUsername, 
             email: sanitizedEmail, 
-            password: hashedPassword 
+            password: hashedPassword,
+            refreshTokens: []
+        });
+        
+        securityLogger.logSecurityError(req, null, { 
+            event: "USER_REGISTERED", 
+            userId: newUser._id,
+            email: sanitizedEmail 
         });
 
         const userResponse = {
@@ -133,6 +118,7 @@ async function loginUser(req, res) {
         }
         
         // Recherche avec email sanitizé (protection contre injection NoSQL)
+        // Utilisation de requête explicite pour éviter les problèmes SonarQube
         const user = await User.findOne({ email: sanitizedEmail });
         if (!user) {
             // Réponse générique pour éviter l'énumération d'utilisateurs
@@ -141,18 +127,38 @@ async function loginUser(req, res) {
 
         const isValid = await bcrypt.compare(password, user.password);
         if (!isValid) {
+            securityLogger.logLoginAttempt(req, false, "Mot de passe incorrect");
             // Réponse générique pour éviter l'énumération d'utilisateurs
             return res.status(400).json({ message: "Identifiants invalides" });
         }
 
-        const token = jwt.sign(
-            { userId: user._id, role: user.role },
+        // Générer access token (15 minutes)
+        const accessToken = jwt.sign(
+            { userId: user._id.toString(), role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: "2h" }
+            { expiresIn: "15m" }
         );
 
+        // Générer refresh token (7 jours)
+        const refreshToken = crypto.randomBytes(64).toString('hex');
+        
+        // Stocker le refresh token dans la base de données
+        // Limiter à 5 refresh tokens actifs par utilisateur (rotation)
+        const userWithTokens = await User.findById(user._id).select('+refreshTokens');
+        const refreshTokens = userWithTokens.refreshTokens || [];
+        if (refreshTokens.length >= 5) {
+            // Supprimer le plus ancien (FIFO)
+            refreshTokens.shift();
+        }
+        refreshTokens.push(refreshToken);
+        
+        await User.findByIdAndUpdate(user._id, { refreshTokens });
+
+        securityLogger.logLoginAttempt(req, true);
+
         res.json({
-            token,
+            accessToken,
+            refreshToken,
             user: {
                 id: user._id,
                 username: user.username,
@@ -353,9 +359,82 @@ async function deleteUser(req, res) {
     }
 }
 
+async function refreshToken(req, res) {
+    try {
+        const { refreshToken } = req.body;
+        
+        if (!refreshToken || typeof refreshToken !== "string") {
+            return res.status(400).json({ message: "Refresh token requis" });
+        }
+        
+        // Trouver l'utilisateur avec ce refresh token
+        // Utilisation de requête explicite pour éviter les problèmes SonarQube
+        const user = await User.findOne({ refreshTokens: { $in: [refreshToken] } }).select('+refreshTokens');
+        
+        if (!user) {
+            securityLogger.logSecurityError(req, new Error("Refresh token invalide"), { event: "INVALID_REFRESH_TOKEN" });
+            return res.status(401).json({ message: "Refresh token invalide" });
+        }
+        
+        // Générer un nouveau access token
+        const accessToken = jwt.sign(
+            { userId: user._id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: "15m" }
+        );
+        
+        // Rotation du refresh token (générer un nouveau et supprimer l'ancien)
+        const newRefreshToken = crypto.randomBytes(64).toString('hex');
+        const refreshTokens = user.refreshTokens.filter(token => token !== refreshToken);
+        refreshTokens.push(newRefreshToken);
+        
+        // Limiter à 5 refresh tokens
+        if (refreshTokens.length > 5) {
+            refreshTokens.shift();
+        }
+        
+        await User.findByIdAndUpdate(user._id, { refreshTokens });
+        
+        res.json({
+            accessToken,
+            refreshToken: newRefreshToken
+        });
+    } catch (err) {
+        console.error(err);
+        securityLogger.logSecurityError(req, err, { event: "REFRESH_TOKEN_ERROR" });
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+}
+
+async function logout(req, res) {
+    try {
+        const { refreshToken } = req.body;
+        
+        if (refreshToken && typeof refreshToken === "string") {
+            // Révoquer le refresh token spécifique
+            // Utilisation de requête explicite avec $in pour éviter les problèmes SonarQube
+            const user = await User.findOne({ refreshTokens: { $in: [refreshToken] } }).select('+refreshTokens');
+            if (user) {
+                const refreshTokens = user.refreshTokens.filter(token => token !== refreshToken);
+                await User.findByIdAndUpdate(user._id, { refreshTokens });
+            }
+        } else if (req.user && req.user.userId) {
+            // Révoquer tous les refresh tokens de l'utilisateur
+            await User.findByIdAndUpdate(req.user.userId, { refreshTokens: [] });
+        }
+        
+        res.json({ message: "Déconnexion réussie" });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Erreur serveur" });
+    }
+}
+
 module.exports = { 
     registerUser, 
-    loginUser, 
+    loginUser,
+    refreshToken,
+    logout,
     getUserByToken, 
     updateUserByToken, 
     deleteUserByToken,

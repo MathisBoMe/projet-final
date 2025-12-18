@@ -101,26 +101,33 @@ function securityHeaders(): Plugin {
   };
 }
 
-import fs from "fs";
-import path from "path";
-
 // https://vite.dev/config/
+const keyPath = path.resolve(__dirname, "../security/server.key");
+const certPath = path.resolve(__dirname, "../security/server.cert");
+const hasCertificates = fs.existsSync(keyPath) && fs.existsSync(certPath);
+
+const serverConfig: any = {
+  headers: {
+    // Headers supplémentaires au niveau du serveur
+    'X-DNS-Prefetch-Control': 'off',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'X-Content-Type-Options': 'nosniff',
+    'X-XSS-Protection': '1; mode=block',
+    'Referrer-Policy': 'strict-origin-when-cross-origin'
+  }
+};
+
+// Ajouter HTTPS seulement si les certificats existent
+if (hasCertificates) {
+  serverConfig.https = {
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath)
+  };
+}
+
 export default defineConfig({
   plugins: [react(), securityHeaders()],
-  server: {
-    https: {
-      key: fs.readFileSync(path.resolve(__dirname, "../security/server.key")),
-      cert: fs.readFileSync(path.resolve(__dirname, "../security/server.cert"))
-    },
-    headers: {
-      // Headers supplémentaires au niveau du serveur
-      'X-DNS-Prefetch-Control': 'off',
-      'X-Frame-Options': 'SAMEORIGIN',
-      'X-Content-Type-Options': 'nosniff',
-      'X-XSS-Protection': '1; mode=block',
-      'Referrer-Policy': 'strict-origin-when-cross-origin'
-    }
-  },
+  server: serverConfig,
   preview: {
     headers: {
       'X-DNS-Prefetch-Control': 'off',
