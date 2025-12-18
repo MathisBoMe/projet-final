@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const swaggerUi = require("swagger-ui-express");
 const { swaggerSpec } = require("./swagger.js");
 const rateLimit = require("express-rate-limit");
@@ -12,13 +13,14 @@ const relationRouter = require("./routes/act_film.routes.js");
 const app = express();
 
 app.use(cors({
-    origin: 'http://localhost:5173',
+    origin: 'https://localhost:5173',
     credentials: true,
     allowedHeaders: ["Authorization", "Content-Type"]
 }));
 app.use(express.json());
 app.use(rateLimit({ windowMs: 60_000, max: 100 }));
 app.use("/auth/login", rateLimit({ windowMs: 15*60_000, max: 10 }));
+app.use(helmet());
 
 app.get("/", (req, res) => res.json({ message: "API OK" }));
 app.get("/pinte", (req, res) => res.json("Picole moins, Milo."));
