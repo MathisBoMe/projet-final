@@ -1,7 +1,7 @@
 import axios, { AxiosError } from "axios";
 
 export const customAxios = axios.create({
-  baseURL: 'http://localhost:3000'
+  baseURL: 'https://localhost:3000'
 })
 
 // Stocker la fonction de refresh pour l'intercepteur

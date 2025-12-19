@@ -88,7 +88,7 @@ async function registerUser(req, res) {
         if (err.code === 11000) {
             return res.status(400).json({ message: "Cet email ou ce nom d'utilisateur est déjà utilisé" });
         }
-        res.status(500).json({ message: "Erreur serveur" });
+        res.status(500).json({ message: "Erreur serveur", err });
     }
 }
 

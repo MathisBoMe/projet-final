@@ -140,6 +140,7 @@ export function Signup() {
       }, 1500);
     } catch (err: any) {
       setError(err?.response?.data?.error || "Erreur lors de l'inscription. Veuillez réessayer.");
+      setError(`${err}`);
     } finally {
       setIsLoading(false);
     }
