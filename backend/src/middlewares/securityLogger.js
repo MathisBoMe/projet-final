@@ -42,10 +42,11 @@ const securityLogger = {
      * Logger les erreurs de sécurité
      */
     logSecurityError(req, error, details = {}) {
+        const errorMessage = error ? (error.message || error.toString()) : 'N/A';
         const logData = {
             timestamp: new Date().toISOString(),
             event: 'SECURITY_ERROR',
-            error: error.message || error,
+            error: errorMessage,
             ip: req.ip || req.connection.remoteAddress,
             userAgent: req.get('user-agent'),
             method: req.method,
@@ -53,7 +54,7 @@ const securityLogger = {
             ...details
         };
 
-        console.error(`[SECURITY] ❌ Erreur de sécurité: ${error.message || error} depuis ${logData.ip}`);
+        console.error(`[SECURITY] ❌ Erreur de sécurité: ${errorMessage} depuis ${logData.ip}`);
     },
 
     /**

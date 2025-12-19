@@ -69,11 +69,8 @@ async function registerUser(req, res) {
             refreshTokens: []
         });
         
-        securityLogger.logSecurityError(req, null, { 
-            event: "USER_REGISTERED", 
-            userId: newUser._id,
-            email: sanitizedEmail 
-        });
+        // Logger l'inscription réussie (pas une erreur, mais un événement de sécurité)
+        console.log(`[SECURITY] ✅ Utilisateur inscrit: ${sanitizedEmail} (ID: ${newUser._id})`);
 
         const userResponse = {
             id: newUser._id,
@@ -84,11 +81,15 @@ async function registerUser(req, res) {
 
         return res.status(201).json({ message: "Utilisateur créé avec succès", user: userResponse });
     } catch (err) {
-        console.error(err);
+        console.error("Erreur lors de l'inscription:", err);
         if (err.code === 11000) {
             return res.status(400).json({ message: "Cet email ou ce nom d'utilisateur est déjà utilisé" });
         }
-        res.status(500).json({ message: "Erreur serveur", err });
+        // En développement, retourner plus de détails pour le débogage
+        const errorMessage = process.env.NODE_ENV === 'development' 
+            ? `Erreur serveur: ${err.message || err.toString()}` 
+            : "Erreur serveur";
+        res.status(500).json({ message: errorMessage });
     }
 }
 

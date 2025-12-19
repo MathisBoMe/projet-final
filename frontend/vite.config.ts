@@ -29,7 +29,7 @@ function securityHeaders(): Plugin {
                 "style-src 'self' 'unsafe-inline'",
                 "img-src 'self' data: https:",
                 "font-src 'self' data:",
-                "connect-src 'self' https://localhost:3000 ws://localhost:* wss://localhost:*", // API backend + WebSocket pour HMR
+                "connect-src 'self' http://localhost:3000 https://localhost:3000 ws://localhost:* wss://localhost:*", // API backend + WebSocket pour HMR
                 "frame-ancestors 'self'",
                 "base-uri 'self'",
                 "form-action 'self'",
