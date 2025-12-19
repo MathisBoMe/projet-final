@@ -1,7 +1,7 @@
 import styled from "styled-components";
 import { Link, useNavigate } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../store/Hooks.ts";
-import { authActions } from "../store/authReducer.ts";
+import { logoutUser } from "../store/authReducer.ts";
 
 const Container = styled.header`
     display: flex;
@@ -71,8 +71,8 @@ export function NavBar() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    dispatch(authActions.logout());
+  const handleLogout = async () => {
+    await dispatch(logoutUser());
     navigate('/auth/login');
   };
 

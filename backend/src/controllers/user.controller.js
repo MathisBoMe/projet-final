@@ -139,15 +139,12 @@ async function loginUser(req, res) {
             { expiresIn: "15m" }
         );
 
-        // Générer refresh token (7 jours)
         const refreshToken = crypto.randomBytes(64).toString('hex');
-        
-        // Stocker le refresh token dans la base de données
+
         // Limiter à 5 refresh tokens actifs par utilisateur (rotation)
         const userWithTokens = await User.findById(user._id).select('+refreshTokens');
         const refreshTokens = userWithTokens.refreshTokens || [];
         if (refreshTokens.length >= 5) {
-            // Supprimer le plus ancien (FIFO)
             refreshTokens.shift();
         }
         refreshTokens.push(refreshToken);

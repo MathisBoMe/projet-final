@@ -1,12 +1,4 @@
-/**
- * Middleware de logging de sécurité
- * Enregistre les événements de sécurité importants
- */
-
 const securityLogger = {
-    /**
-     * Logger les tentatives de login
-     */
     logLoginAttempt(req, success, reason = null) {
         const logData = {
             timestamp: new Date().toISOString(),
@@ -24,8 +16,6 @@ const securityLogger = {
             console.warn(`[SECURITY] ⚠️  Tentative de login échouée: ${logData.email} depuis ${logData.ip} - ${reason}`);
         }
 
-        // En production, vous pourriez envoyer ces logs vers un service externe
-        // (ex: Winston, CloudWatch, etc.)
     },
 
     /**
