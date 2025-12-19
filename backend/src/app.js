@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const swaggerUi = require("swagger-ui-express");
 const { swaggerSpec } = require("./swagger.js");
 const rateLimit = require("express-rate-limit");
+const { cacheControlMiddleware } = require("./middlewares/cacheControl.js");
 const userRouter = require("./routes/userRoutes.js");
 const realisateurRouter = require("./routes/realisateur.routes.js");
 const filmRouter = require("./routes/film.routes.js");
@@ -25,6 +26,9 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false, // Désactivé pour compatibilité avec certains navigateurs
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// Middleware Cache-Control pour éviter le cache de contenu sensible
+app.use(cacheControlMiddleware);
 
 // Configuration CORS avec support des variables d'environnement
 const allowedOrigins = process.env.ALLOWED_ORIGINS 
