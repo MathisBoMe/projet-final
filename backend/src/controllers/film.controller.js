@@ -99,7 +99,25 @@ async function listFilm(req, res) {
         res.json(films);
     } catch (err) {
         console.error("Erreur lors de la récupération des films:", err);
-        res.status(500).json({ error: "Erreur serveur lors de la récupération des films." });
+        
+        // Gestion spécifique des erreurs Prisma
+        if (err.name === 'PrismaClientInitializationError') {
+            console.error("❌ Erreur de connexion à la base de données PostgreSQL:");
+            console.error("   - Vérifiez que PostgreSQL est démarré");
+            console.error("   - Vérifiez que DATABASE_URL dans .env est correct");
+            console.error("   - Vérifiez que la base de données 'cinema_db' existe");
+            console.error("   - Exécutez 'npx prisma migrate deploy' si nécessaire");
+            
+            return res.status(500).json({ 
+                error: "Erreur de connexion à la base de données",
+                details: process.env.NODE_ENV === 'development' ? err.message : undefined
+            });
+        }
+        
+        res.status(500).json({ 
+            error: "Erreur serveur lors de la récupération des films.",
+            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 }
 
